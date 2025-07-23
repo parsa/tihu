@@ -203,8 +203,8 @@
         <label>
             Caretaker on work-days:
             <span id="careGroup" class="caretaker">
-                <button type="button" data-care="dad">Dad</button>
-                <button type="button" data-care="mom" class="active">Mom</button>
+                <button type="button" data-care="father">Father</button>
+                <button type="button" data-care="mother" class="active">Mother</button>
                 <button type="button" data-care="daycare">Daycare</button>
             </span>
         </label>
@@ -227,7 +227,7 @@
             // Tab UI state
             let currentFmt = "agenda"; // default format
             // Caretaker UI state
-            let currentCaretaker = "mom"; // default matches the active button
+            let currentCaretaker = "mother"; // default matches the active button
             // Wire tab buttons
             document.addEventListener('DOMContentLoaded', () => {
                 const tabsEl = document.getElementById('tabs');
@@ -281,13 +281,13 @@
                         : parentAM;
 
                 // Father working day, optional caretaker window 08:30-17:30 ( 17:20 on exchange-day )
-                if (parentNow === "father" && isWork && caretakerPref !== "dad") {
+                if (parentNow === "father" && isWork && caretakerPref !== "father") {
                     const drop = timeObjToDate(day, DROP_TIME);
                     const pick = isExchangeDay(day) && caretakerPref === "daycare"
                         ? new Date(timeObjToDate(day, EXCH_TIME) - 10 * 60 * 1000) // 17:20
                         : timeObjToDate(day, PICK_TIME);
                     if (dt >= drop && dt < pick) {
-                        return caretakerPref === "mom" ? "mother" : "daycare";
+                        return caretakerPref === "mother" ? "mother" : "daycare";
                     }
                 }
                 return parentNow;
@@ -373,25 +373,25 @@
             * Who has legal custody *before 17:30* on this date
             * Schedule is the classic 2-2-3 that flips every week:
             *
-            *   + Dad-weekend week (weekParity == 0) +
+            *   + Father-weekend week (weekParity == 0) +
             *   Mon Tue Wed Thu Fri Sat Sun
-            *   Dad Dad Mom Mom Dad Dad Dad
+            *   Father Father Mother Mother Father Father Father
             *
-            *   + Mom-weekend week (weekParity == 1) +
+            *   + Mother-weekend week (weekParity == 1) +
             *   Mon Tue Wed Thu Fri Sat Sun
-            *   Mom Mom Dad Dad Mom Mom Mom
+            *   Mother Mother Father Father Mother Mother Mother
              */
             function custodyParent(day) {
-                const p = weekParity(day);          // 0 = Dad-weekend, 1 = Mom-weekend
+                const p = weekParity(day);          // 0 = Father-weekend, 1 = Mother-weekend
                 const wd = day.getDay();             // 0 Sun ... 6 Sat
-                const dadWeek = p === 0;
+                const fatherWeek = p === 0;
 
                 // Mon-Tue
-                if (wd === 1 || wd === 2) return dadWeek ? "father" : "mother";
+                if (wd === 1 || wd === 2) return fatherWeek ? "father" : "mother";
                 // Wed-Thu
-                if (wd === 3 || wd === 4) return dadWeek ? "mother" : "father";
+                if (wd === 3 || wd === 4) return fatherWeek ? "mother" : "father";
                 // Fri-Sat-Sun
-                return dadWeek ? "father" : "mother";
+                return fatherWeek ? "father" : "mother";
             }
             const isExchangeDay = d => EXCHANGE_WEEKDAYS.has(d.getDay());
 
@@ -405,14 +405,14 @@
                 const working = WORKDAYS.has(day.getDay());
 
                 // drop-off / pick-up block
-                if (parent === 'father' && working && caretakerPref !== 'dad') {
-                    const dropLoc = caretakerPref === 'mom' ? LIBRARY_LOC : DAYCARE_LOC;
+                if (parent === 'father' && working && caretakerPref !== 'father') {
+                    const dropLoc = caretakerPref === 'mother' ? LIBRARY_LOC : DAYCARE_LOC;
                     acts.push(mkAct({
                         date: day,
                         time: timeObjToDate(day, DROP_TIME),
                         summary: 'Drop off Tihu',
                         location: dropLoc,
-                        notes: `${caretakerPref === 'mom' ? 'Mom care' : 'Daycare care'}`
+                        notes: `${caretakerPref === 'mother' ? 'Mother care' : 'Daycare care'}`
                     }));
                     let pickTime = null;
                     if (caretakerPref === 'daycare' && isExchangeDay(day)) {
@@ -426,7 +426,7 @@
                             time: pickTime,
                             summary: 'Pick up Tihu',
                             location: dropLoc,
-                            notes: `${caretakerPref === 'mom' ? 'Mom care' : 'Daycare care'}`
+                            notes: `${caretakerPref === 'mother' ? 'Mother care' : 'Daycare care'}`
                         }));
                     }
                 }
@@ -439,10 +439,10 @@
                     };
 
                     const newCustodian = parent === 'mother' ? 'father' : 'mother';          // who has Tihu *after* 17:30
-                    const direction = `${parent === 'mother' ? 'Mom' : 'Dad'} -> ${newCustodian === 'mother' ? 'Mom' : 'Dad'}`;
+                    const direction = `${parent === 'mother' ? 'Mother' : 'Father'} -> ${newCustodian === 'mother' ? 'Mother' : 'Father'}`;
 
-                    // "passive" when Dad was working, Mom already had Tihu all afternoon.
-                    const passive = parent === 'father' && working && caretakerPref === 'mom';
+                    // "passive" when father was working, mother already had Tihu all afternoon.
+                    const passive = parent === 'father' && working && caretakerPref === 'mother';
 
                     if (passive) {
                         acts.push(mkAct({
@@ -455,8 +455,8 @@
                         acts.push(mkAct({
                             ...base,
                             summary: parent === 'mother'
-                                ? 'Pick up Tihu'                 // Dad picks up from Mom
-                                : 'Drop off Tihu',               // Dad drops off to Mom
+                                ? 'Pick up Tihu'                 // father picks up from mother
+                                : 'Drop off Tihu',               // father drops off to mother
                             location: LIBRARY_LOC,
                             notes: `Exchange: ${direction}`
                         }));
@@ -469,7 +469,7 @@
                         time: timeObjToDate(day, { h: 0, m: 0 }),
                         summary: '-',
                         location: '',
-                        notes: `${custodyParent(day) === 'mother' ? 'Mom' : 'Dad'} all day`
+                        notes: `${custodyParent(day) === 'mother' ? 'Mother' : 'Father'} all day`
                     }, false));
                 }
                 return acts;
