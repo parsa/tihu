@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/ical.js@1.5.0/build/ical.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"></script>
+    <meta charset="utf-8" />
+    <title>Tihu Exchange Schedule Generator</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+        details {
+            margin-bottom: .6rem;
+        }
+
+        details summary {
+            cursor: pointer;
+        }
+
+        ul {
+            margin: .25rem 0 .25rem 1.25rem;
+            padding-left: 0;
+            list-style-type: disc;
+        }
+
+        ul ul {
+            list-style-type: circle;
+        }
+
+        body {
+            font-family: system-ui, sans-serif;
+            max-width: 840px;
+            margin: 0 auto;
+            padding: 1.25rem;
+        }
+
+        h1 {
+            font-size: 1.75rem;
+            margin-bottom: 1rem;
+        }
+
+        label {
+            display: block;
+            margin-top: 0.75rem;
+        }
+
+        input,
+        select {
+            padding: 0.25rem 0.4rem;
+            font-size: 1rem;
+        }
+
+        #output {
+            margin-top: 1.5rem;
+            border: 1px solid #ccc;
+            padding: 1rem;
+            min-height: 6rem;
+        }
+
+        .agenda {
+            border-collapse: collapse;
+            width: 100%;
+            font-size: 0.9rem;
+        }
+
+        .agenda th,
+        .agenda td {
+            border: 1px solid #ccc;
+            padding: 0.25rem 0.4rem;
+        }
+
+        /* .agenda tbody tr:nth-child(even) { background: #f9f9f9; } -- replaced by day-block striping */
+        .agenda .day-alt-0 {
+            background: #fff;
+        }
+
+        .agenda .day-alt-1 {
+            background: #f9f9f9;
+        }
+
+        .agenda th {
+            background: #f0f0f0;
+        }
+
+        pre.todo {
+            font-family: "Courier New", monospace;
+            margin: 0;
+        }
+
+        #downloadLink {
+            display: inline-block;
+            margin-top: 1rem;
+            text-decoration: underline;
+            color: #0062cc;
+            cursor: pointer;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .tabs {
+            display: flex;
+            gap: .5rem;
+            margin-top: 1rem;
+        }
+
+        .tabs button {
+            padding: .35rem .8rem;
+            border: 1px solid #888;
+            background: #f4f4f4;
+            cursor: pointer;
+        }
+
+        .tabs button.active {
+            background: #0062cc;
+            color: #fff;
+            border-color: #0062cc;
+        }
+
+        .caretaker button {
+            padding: .3rem .8rem;
+            border: 1px solid #888;
+            background: #f4f4f4;
+            cursor: pointer;
+        }
+
+        .caretaker button.active {
+            background: #198754;
+            /* green tint */
+            color: #fff;
+            border-color: #198754;
+        }
+
+        .agenda tr.first-of-day td {
+            border-top: 2px solid #666;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Tihu Exchange Schedule Generator</h1>
+
+    <form id="form" autocomplete="off">
+        <label>
+            Start date:
+            <input type="date" id="start" required />
+        </label>
+
+        <label>
+            Days horizon:
+            <input type="number" id="days" value="14" min="1" max="365" />
+        </label>
+
+        <label>
+            Caretaker on work-days:
+            <span id="careGroup" class="caretaker">
+                <button type="button" data-care="dad">Dad</button>
+                <button type="button" data-care="mom" class="active">Mom</button>
+                <button type="button" data-care="daycare">Daycare</button>
+            </span>
+        </label>
+
+        <!-- format selector removed; replaced by tabs -->
+    </form>
+    <div id="tabs" class="tabs">
+        <button data-fmt="agenda" class="active">Agenda</button>
+        <button data-fmt="todo-mgr">Todo Manager</button>
+        <button data-fmt="todo-tree">Todo Tree</button>
+        <button data-fmt="ics">Calendar (ICS)</button>
+    </div>
+
+    <div id="output"></div>
+    <a id="downloadLink" class="hidden">Download tihu.ics</a>
+
+    <script>
+        (() => {
+            // Tab UI state
+            let currentFmt = "agenda"; // default format
+            // Caretaker UI state
+            let currentCaretaker = "mom"; // default matches the active button
+            // Wire tab buttons
+            document.addEventListener('DOMContentLoaded', () => {
+                const tabsEl = document.getElementById('tabs');
+                tabsEl.addEventListener('click', e => {
+                    if (e.target.tagName !== 'BUTTON') return;
+                    currentFmt = e.target.dataset.fmt;
+                    Array.from(tabsEl.children).forEach(b => b.classList.toggle('active', b === e.target));
+                    generate();
+                });
+                // Wire caretaker buttons
+                const careGrp = document.getElementById('careGroup');
+                careGrp.addEventListener('click', e => {
+                    if (e.target.tagName !== 'BUTTON') return;
+                    currentCaretaker = e.target.dataset.care;
+                    Array.from(careGrp.children).forEach(b => b.classList.toggle('active', b === e.target));
+                    generate();
+                });
+            });
+            // ---------------------------  Constants  ---------------------------
+            const ANCHOR_MONDAY = new Date(2025, 6, 14);   // Monday in a father-weekend week (local-time)
+            const EXCHANGE_WEEKDAYS = new Set([2, 4, 0]);  // Tue(2), Thu(4), Sun(0)
+            const WORKDAYS = new Set([1, 2, 3, 4, 5]);     // Mon-Fri
+            const LIBRARY_LOC = "Sunnyvale Public Library";
+            const DAYCARE_LOC = "Daycare";
+
+            const DROP_TIME = { h: 8, m: 30 };
+            const PICK_TIME = { h: 17, m: 30 };
+            const EXCH_TIME = { h: 17, m: 30 };
+            // ------------------------------------------------------------------
+
+            // ----------------------  Utility Helpers  ----------------------
+            function weekLabel(weekIdx) {
+                if (weekIdx === 0) return "This Week";
+                if (weekIdx === 1) return "Next Week";
+                return `In ${weekIdx} Weeks`;
+            }
+            // decide if the extra label is 'interesting'
+            function decoratedDate(day) {
+                const tag = relDay(day);
+                const interesting = tag === 'Today' || tag === 'Tomorrow' || tag.startsWith('Next ');
+                return interesting ? `${fmtLongDate(day)} (${tag})` : fmtLongDate(day);
+            }
+            const pad = n => String(n).padStart(2, "0");
+            const fmtDateISO = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+            const fmtWeekday = d => new Intl.DateTimeFormat('en-US', { weekday: 'short' }).format(d); // Tue, Wed ...
+            const fmtTime = d => d.toLocaleTimeString('en-US', { hour: "2-digit", minute: "2-digit", hour12: false });
+
+            // Long date string, e.g. "Wed, July 23, 2025"
+            const fmtLongDate = d =>
+                new Intl.DateTimeFormat('en-US',
+                    { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric' }
+                ).format(d);
+
+            // Relative label for "Day" column
+            function dateOnly(d) {
+                return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+            }
+            function relDay(day, today = dateOnly(new Date())) {
+                const diff = Math.round((dateOnly(day) - today) / 864e5);
+                if (diff === 0) return 'Today';
+                if (diff === 1) return 'Tomorrow';
+                if (diff >= 2 && diff <= 6) return day.toLocaleDateString('en-US', { weekday: 'long' });
+                if (diff >= 7 && diff <= 13) return 'Next ' + day.toLocaleDateString('en-US', { weekday: 'long' });
+                return day.toLocaleDateString('en-US', { weekday: 'long' });
+            }
+
+            // --------------------------  Core Rules  --------------------------
+            function weekParity(day) {
+                const monday = new Date(day);
+                monday.setDate(day.getDate() - ((day.getDay() + 6) % 7));
+                const deltaWeeks = Math.floor((monday - ANCHOR_MONDAY) / (7 * 864e5));
+                return deltaWeeks & 1; // 0 father-weekend, 1 mother-weekend
+            }
+            function custodyParent(day) {
+                const wd = day.getDay();
+                if (wd === 3 || wd === 4) return "father"; // Wed/Thu
+                if (wd === 1 || wd === 2) return "mother"; // Mon/Tue
+                return weekParity(day) === 0 ? "father" : "mother";
+            }
+            const isExchangeDay = d => EXCHANGE_WEEKDAYS.has(d.getDay());
+
+            // ----------------------  Action Construction  ----------------------
+            function timeObjToDate(day, t) {
+                return new Date(day.getFullYear(), day.getMonth(), day.getDate(), t.h, t.m);
+            }
+            function actionsForDay(day, caretaker) {
+                const acts = [];
+                const parent = custodyParent(day);
+                const working = WORKDAYS.has(day.getDay());
+                if (parent === 'father' && working && caretaker !== 'dad') {
+                    const dropLoc = caretaker === 'mom' ? LIBRARY_LOC : DAYCARE_LOC;
+                    acts.push({ date: day, time: timeObjToDate(day, DROP_TIME), summary: `Drop off Tihu (${caretaker} care)`, location: dropLoc });
+                    let pickTime = null;
+                    if (caretaker === 'daycare' && isExchangeDay(day)) {
+                        pickTime = new Date(timeObjToDate(day, EXCH_TIME).getTime() - 10 * 60 * 1000);
+                    } else if (!isExchangeDay(day)) {
+                        pickTime = timeObjToDate(day, PICK_TIME);
+                    }
+                    if (pickTime) {
+                        acts.push({ date: day, time: pickTime, summary: `Pick up Tihu (${caretaker} care)`, location: dropLoc });
+                    }
+                }
+                if (isExchangeDay(day)) {
+                    const base = { date: day, time: timeObjToDate(day, EXCH_TIME), location: LIBRARY_LOC };
+                    acts.push(parent === 'mother' ? { ...base, summary: "Pick up Tihu / Exchange" } : { ...base, summary: "Exchange custody" });
+                }
+                return acts;
+            }
+
+            // -------------------------  Formatters  -------------------------
+            function agendaTableHTML(start, span, caretaker) {
+                let html = `<table class="agenda"><thead><tr>
+                <th>Date</th><th>Time</th>
+                <th>Action</th><th>Where / Notes</th>
+              </tr></thead><tbody>`;
+
+                let zebra = 0; // 0/1 alternates per day
+
+                for (let i = 0; i < span; ++i) {
+                    const day = new Date(start); day.setDate(start.getDate() + i);
+                    const acts = actionsForDay(day, caretaker);
+                    if (!acts.length) continue;
+
+                    acts.forEach((a, idx) => {
+                        const cls = `day-alt-${zebra}` + (idx === 0 ? " first-of-day" : "");
+                        html += `<tr class="${cls}">
+        ${idx ? '' : `<td rowspan="${acts.length}">${decoratedDate(day)}</td>`}
+        <td>${fmtTime(a.time)}</td>
+        <td>${a.summary}</td>
+        <td>${a.location || ''}</td>
+      </tr>`;
+                    });
+
+                    zebra ^= 1; // flip after finishing current date
+                }
+                return html + '</tbody></table>';
+            }
+            function formatDateICS(d) { return d.toISOString().replace(/[-:]/g, "").split(".")[0]; }
+            function icsOutput(start, span, caretaker) {
+                const tzid = "America/Los_Angeles";
+                const now = formatDateICS(new Date()) + "Z";
+                const cal = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Tihu Schedule//EN"];
+                for (let i = 0; i < span; ++i) {
+                    const day = new Date(start); day.setDate(start.getDate() + i);
+                    for (const a of actionsForDay(day, caretaker)) {
+                        const dtstart = formatDateICS(a.time);
+                        const uid = (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)) + "@tihu";
+                        cal.push("BEGIN:VEVENT", `DTSTAMP:${now}`, `UID:${uid}`, `DTSTART;TZID=${tzid}:${dtstart}`, "DURATION:PT15M", `SUMMARY:${a.summary}`, `LOCATION:${a.location}`, "END:VEVENT");
+                    }
+                }
+                cal.push("END:VCALENDAR");
+                return cal.join("\r\n");
+            }
+            function todoTreeOutput(start, span, caretaker) {
+                // replaced by todoTreeHTML
+                return '';
+            }
+
+            function todoTreeHTML(start, span, caretaker) {
+                const today = dateOnly(new Date());
+                const weekMon = d => { let n = new Date(d); n.setDate(n.getDate() - n.getDay()); return n; };
+                const bucket = {};   // weekIdx -> [ { day, acts } ]
+
+                // gather tasks
+                for (let i = 0; i < span; ++i) {
+                    const day = new Date(start); day.setDate(start.getDate() + i);
+                    const acts = actionsForDay(day, caretaker);
+                    if (!acts.length) continue;
+
+                    const idx = Math.floor((weekMon(day) - weekMon(today)) / (7 * 864e5));
+                    bucket[idx] ??= [];
+                    bucket[idx].push({ day, acts });
+                }
+
+                // build HTML
+                let html = "";
+                Object.keys(bucket).sort((a, b) => a - b).forEach(idx => {
+                    html += `<details ${idx == 0 ? "open" : ""}>
+                     <summary><strong>${weekLabel(+idx)}</strong></summary><ul>`;
+                    bucket[idx].forEach(({ day, acts }) => {
+                        const isToday = dateOnly(day).getTime() === dateOnly(new Date()).getTime();
+                        html += `<li style="list-style:none"><details ${isToday ? "open" : ""}>
+             <summary>${decoratedDate(day)}</summary><ul>`;
+                        acts.forEach(a => {
+                            const loc = a.location ? ` @ ${a.location}` : "";
+                            html += `<li>${fmtTime(a.time)} - ${a.summary}${loc}</li>`;
+                        });
+                        html += `</ul></details></li>`;
+                    });
+                    html += `</ul></details>`;
+                });
+                return html;
+            }
+
+            function todoMgrOutput(start, span, caretaker) {
+                const lines = [];
+                for (let i = 0; i < span; ++i) {
+                    const day = new Date(start); day.setDate(start.getDate() + i);
+                    const acts = actionsForDay(day, caretaker);
+                    if (!acts.length) continue;
+
+                    lines.push(`# ${fmtDateISO(day)} ${fmtWeekday(day)}`);
+                    acts.forEach(a => {
+                        const loc = a.location ? ` @ ${a.location}` : '';
+                        lines.push(`${fmtTime(a.time)} ${a.summary}${loc}`);
+                    });
+                    lines.push('');
+                }
+                return lines.join('\n');
+            }
+
+            // -------------------------  UI Binding  -------------------------
+            const form = document.getElementById("form");
+            const outputEl = document.getElementById("output");
+            const linkEl = document.getElementById("downloadLink");
+            let prevUrl = null;
+
+            function showICS(text) {
+                // 1) parse .ics
+                const jcal = ICAL.parse(text);
+                const comp = new ICAL.Component(jcal);
+                const vevs = comp.getAllSubcomponents('vevent');
+
+                // 2) convert to FullCalendar event objects
+                const events = vevs.map(v => {
+                    const e = new ICAL.Event(v);
+                    return {
+                        title: e.summary,
+                        start: e.startDate.toJSDate(),
+                        end: e.endDate ? e.endDate.toJSDate() : null,
+                        allDay: false,
+                        location: e.location
+                    };
+                });
+
+                // 3) clear output and inject a <div id="cal">
+                outputEl.innerHTML = '<div id="cal"></div>';
+                const calendar = new FullCalendar.Calendar(document.getElementById('cal'), {
+                    initialView: 'dayGridMonth',
+                    height: 'auto',
+                    events
+                });
+                calendar.render();
+            }
+
+            function renderPre(text) { // keep for todo views
+                outputEl.innerHTML = `<pre class="todo">${text}</pre>`;
+            }
+
+            function generate() {
+                const startStr = document.getElementById("start").value;
+                if (!startStr) { outputEl.textContent = "Pick a start date."; linkEl.classList.add("hidden"); return; }
+                const [yy, mm, dd] = startStr.split("-").map(Number);
+                const startDate = new Date(yy, mm - 1, dd);
+                const span = parseInt(document.getElementById("days").value, 10) || 14;
+                const caretaker = currentCaretaker;
+                const format = currentFmt;
+                if (prevUrl) { URL.revokeObjectURL(prevUrl); prevUrl = null; }
+                linkEl.classList.add("hidden");
+                linkEl.href = "#";
+                if (format === 'agenda') {
+                    outputEl.innerHTML = agendaTableHTML(startDate, span, caretaker);
+                } else if (format === 'todo-mgr') {
+                    renderPre(todoMgrOutput(startDate, span, caretaker));
+                } else if (format === 'todo-tree') {
+                    outputEl.innerHTML = todoTreeHTML(startDate, span, caretaker);
+                } else { // ICS chosen
+                    const icsText = icsOutput(startDate, span, caretaker);
+                    showICS(icsText); // render calendar preview
+                    const blob = new Blob([icsText], { type: "text/calendar" });
+                    prevUrl = URL.createObjectURL(blob);
+                    linkEl.href = prevUrl;
+                    linkEl.download = "tihu.ics";
+                    linkEl.textContent = "Download tihu.ics";
+                    linkEl.classList.remove("hidden");
+                }
+            }
+            form.addEventListener("input", generate);
+            form.addEventListener("change", generate);
+            document.getElementById("start").value = (new Date()).toISOString().slice(0, 10);
+            generate();
+        })();
+    </script>
+</body>
+
+</html>
