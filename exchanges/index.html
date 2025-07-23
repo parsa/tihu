@@ -253,6 +253,10 @@
             const LIBRARY_LOC = "Sunnyvale Public Library";
             const DAYCARE_LOC = "Daycare";
 
+            // --- mkAct helper ---
+            function mkAct(obj, required = true) {
+                return { ...obj, actionRequired: required };
+            }
             const DROP_TIME = { h: 8, m: 30 };
             const PICK_TIME = { h: 17, m: 30 };
             const EXCH_TIME = { h: 17, m: 30 };
@@ -377,26 +381,54 @@
             function timeObjToDate(day, t) {
                 return new Date(day.getFullYear(), day.getMonth(), day.getDate(), t.h, t.m);
             }
-            function actionsForDay(day, caretaker) {
+            function actionsForDay(day, caretakerPref) {
                 const acts = [];
                 const parent = custodyParent(day);
                 const working = WORKDAYS.has(day.getDay());
-                if (parent === 'father' && working && caretaker !== 'dad') {
-                    const dropLoc = caretaker === 'mom' ? LIBRARY_LOC : DAYCARE_LOC;
-                    acts.push({ date: day, time: timeObjToDate(day, DROP_TIME), summary: `Drop off Tihu (${caretaker} care)`, location: dropLoc });
+
+                // drop-off / pick-up block
+                if (parent === 'father' && working && caretakerPref !== 'dad') {
+                    const dropLoc = caretakerPref === 'mom' ? LIBRARY_LOC : DAYCARE_LOC;
+                    acts.push(mkAct({
+                        date: day,
+                        time: timeObjToDate(day, DROP_TIME),
+                        summary: `Drop off Tihu (${caretakerPref} care)`,
+                        location: dropLoc
+                    }));
                     let pickTime = null;
-                    if (caretaker === 'daycare' && isExchangeDay(day)) {
+                    if (caretakerPref === 'daycare' && isExchangeDay(day)) {
                         pickTime = new Date(timeObjToDate(day, EXCH_TIME).getTime() - 10 * 60 * 1000);
                     } else if (!isExchangeDay(day)) {
                         pickTime = timeObjToDate(day, PICK_TIME);
                     }
                     if (pickTime) {
-                        acts.push({ date: day, time: pickTime, summary: `Pick up Tihu (${caretaker} care)`, location: dropLoc });
+                        acts.push(mkAct({
+                            date: day,
+                            time: pickTime,
+                            summary: `Pick up Tihu (${caretakerPref} care)`,
+                            location: dropLoc
+                        }));
                     }
                 }
+
+                // 17:30 exchange
                 if (isExchangeDay(day)) {
-                    const base = { date: day, time: timeObjToDate(day, EXCH_TIME), location: LIBRARY_LOC };
-                    acts.push(parent === 'mother' ? { ...base, summary: "Pick up Tihu / Exchange" } : { ...base, summary: "Exchange custody" });
+                    const base = {
+                        date: day,
+                        time: timeObjToDate(day, EXCH_TIME),
+                    };
+                    // detect “already-with-Mom” passive hand-off
+                    const passive =
+                        parent === 'father' &&
+                        working &&
+                        caretakerPref === 'mom';
+
+                    acts.push(mkAct(
+                        passive
+                            ? { ...base, summary: 'Custody flips to Mom (no action)', location: '' }
+                            : { ...base, summary: parent === 'mother' ? 'Pick up Tihu / Exchange' : 'Exchange custody', location: LIBRARY_LOC },
+                        !passive
+                    ));
                 }
                 return acts;
             }
@@ -439,7 +471,10 @@
                     for (const a of actionsForDay(day, caretaker)) {
                         const dtstart = formatDateICS(a.time);
                         const uid = (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)) + "@tihu";
-                        cal.push("BEGIN:VEVENT", `DTSTAMP:${now}`, `UID:${uid}`, `DTSTART;TZID=${tzid}:${dtstart}`, "DURATION:PT15M", `SUMMARY:${a.summary}`, `LOCATION:${a.location}`, "END:VEVENT");
+                        const ve = [];
+                        if (!a.actionRequired) ve.push('TRANSP:TRANSPARENT');
+                        if (a.location) ve.push(`LOCATION:${a.location}`);
+                        cal.push("BEGIN:VEVENT", `DTSTAMP:${now}`, `UID:${uid}`, `DTSTART;TZID=${tzid}:${dtstart}`, "DURATION:PT15M", `SUMMARY:${a.summary}`, ve.join('\r\n'), "END:VEVENT");
                     }
                 }
                 cal.push("END:VCALENDAR");
@@ -459,11 +494,13 @@
                 for (let i = 0; i < span; ++i) {
                     const day = new Date(start); day.setDate(start.getDate() + i);
                     const acts = actionsForDay(day, caretaker);
-                    if (!acts.length) continue;
+                    // filter only actionable
+                    const active = acts.filter(a => a.actionRequired);
+                    if (!active.length) continue;
 
                     const idx = Math.floor((weekMon(day) - weekMon(today)) / (7 * 864e5));
                     bucket[idx] ??= [];
-                    bucket[idx].push({ day, acts });
+                    bucket[idx].push({ day, acts: active });
                 }
 
                 // build HTML
@@ -491,10 +528,11 @@
                 for (let i = 0; i < span; ++i) {
                     const day = new Date(start); day.setDate(start.getDate() + i);
                     const acts = actionsForDay(day, caretaker);
-                    if (!acts.length) continue;
+                    const active = acts.filter(a => a.actionRequired);
+                    if (!active.length) continue;
 
                     lines.push(`# ${fmtDateISO(day)} ${fmtWeekday(day)}`);
-                    acts.forEach(a => {
+                    active.forEach(a => {
                         const loc = a.location ? ` @ ${a.location}` : '';
                         lines.push(`${fmtTime(a.time)} ${a.summary}${loc}`);
                     });
