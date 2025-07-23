@@ -197,7 +197,7 @@
 
         <label>
             Days horizon:
-            <input type="number" id="days" value="14" min="1" max="365" />
+            <input type="number" id="days" value="30" min="1" max="365" />
         </label>
 
         <label>
@@ -371,30 +371,27 @@
             }
             /**
              * Who has legal custody *before 17 : 30* on this date
-             * (exchange flips are handled separately).
-             *
-             * weekParity(day) === 0  ->  "Dad-weekend" block (Dad gets Fri-Sun)
-             * weekParity(day) === 1  ->  "Mom-weekend" block
-             *
-             * Pattern (repeats every two weeks):
-             *   Dad-weekend  :  Mom Mom Dad Mom Dad Dad Dad   (Mon-Sun)
-             *   Mom-weekend  :  Dad Dad Mom Mom Mom Mom Mom
+            * Schedule is the classic 2-2-3 that flips every week:
+            *
+            *   ┌ Dad-weekend week (weekParity == 0) ┐
+            *   Mon Tue Wed Thu Fri Sat Sun
+            *   Dad Dad Mom Mom Dad Dad Dad
+            *
+            *   ┌ Mom-weekend week (weekParity == 1) ┐
+            *   Mon Tue Wed Thu Fri Sat Sun
+            *   Mom Mom Dad Dad Mom Mom Mom
              */
             function custodyParent(day) {
-                const p = weekParity(day);      // 0 = Dad-weekend, 1 = Mom-weekend
-                const wd = day.getDay();        // 0 Sun … 6 Sat
+                const p = weekParity(day);          // 0 = Dad-weekend, 1 = Mom-weekend
+                const wd = day.getDay();             // 0 Sun … 6 Sat
+                const dadWeek = p === 0;
 
-                // Mon
-                if (wd === 1) return p === 0 ? "mother" : "father";
-                // Tue (always Mom until 17:30)
-                if (wd === 2) return "mother";
-                // Wed
-                if (wd === 3) return p === 0 ? "father" : "mother";
-                // Thu (always Mom until 17:30)
-                if (wd === 4) return "mother";
-                // Fri / Sat / Sun
-                if (wd === 5 || wd === 6 || wd === 0)
-                    return p === 0 ? "father" : "mother";
+                // Mon-Tue
+                if (wd === 1 || wd === 2) return dadWeek ? "father" : "mother";
+                // Wed-Thu
+                if (wd === 3 || wd === 4) return dadWeek ? "mother" : "father";
+                // Fri-Sat-Sun
+                return dadWeek ? "father" : "mother";
             }
             const isExchangeDay = d => EXCHANGE_WEEKDAYS.has(d.getDay());
 
