@@ -135,6 +135,16 @@
         .agenda tr.first-of-day td {
             border-top: 2px solid #666;
         }
+
+        /* --- timeline view ----------------------------------------------------- */
+        .timeline           { border-collapse: collapse; width: 100%; font-size: .8rem; }
+        .timeline th,
+        .timeline td        { border: 1px solid #ccc; padding: .15rem .3rem; text-align: center; }
+        .timeline thead th  { background: #f0f0f0; }
+
+        .tihu-father  { background:#1e90ff; color:#fff; }   /* DodgerBlue  */
+        .tihu-mother  { background:#ff8c00; color:#fff; }   /* DarkOrange  */
+        .tihu-daycare { background:#6c757d; color:#fff; }   /* Slate/Gray  */
     </style>
 </head>
 
@@ -168,6 +178,7 @@
         <button data-fmt="todo-mgr">Todo Manager</button>
         <button data-fmt="todo-tree">Todo Tree</button>
         <button data-fmt="ics">Calendar (ICS)</button>
+        <button data-fmt="timeline">Timeline</button>
     </div>
 
     <div id="output"></div>
@@ -208,6 +219,55 @@
             const PICK_TIME = { h: 17, m: 30 };
             const EXCH_TIME = { h: 17, m: 30 };
             // ------------------------------------------------------------------
+
+            // Timeline color map
+            const CARE_COLOR = {
+                father:  "tihu-father",
+                mother:  "tihu-mother",
+                daycare: "tihu-daycare"
+            };
+            // Return "father" | "mother" | "daycare"
+            function caregiverAt(dt, caretakerPref) {
+                const day      = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
+                const parentAM = custodyParent(day);           // default 00-24h holder
+                const isWork   = WORKDAYS.has(day.getDay());
+                const exchT    = timeObjToDate(day, EXCH_TIME);
+
+                // Exchange flips the parent at 17:30
+                const parentNow =
+                    isExchangeDay(day) && dt >= exchT ? (parentAM === "father" ? "mother" : "father")
+                                                      : parentAM;
+
+                // Father working day, optional caretaker window 08:30-17:30 ( 17:20 on exchange-day )
+                if (parentNow === "father" && isWork && caretakerPref !== "dad") {
+                    const drop   = timeObjToDate(day, DROP_TIME);
+                    const pick   = isExchangeDay(day) && caretakerPref === "daycare"
+                                 ? new Date(timeObjToDate(day, EXCH_TIME) - 10*60*1000) // 17:20
+                                 : timeObjToDate(day, PICK_TIME);
+                    if (dt >= drop && dt < pick) {
+                        return caretakerPref === "mom" ? "mother" : "daycare";
+                    }
+                }
+                return parentNow;
+            }
+            function timelineHTML(start, span, caretakerPref) {
+                let html = '<table class="timeline"><thead><tr><th>Date</th>';
+                for (let h = 0; h < 24; ++h) html += `<th>${h.toString().padStart(2,"0")}</th>`;
+                html += '</tr></thead><tbody>';
+
+                for (let i = 0; i < span; ++i) {
+                    const day = new Date(start); day.setDate(start.getDate() + i);
+                    html += `<tr><th>${decoratedDate(day)}</th>`;
+
+                    for (let h = 0; h < 24; ++h) {
+                        const at = new Date(day.getFullYear(), day.getMonth(), day.getDate(), h, 0, 0);
+                        const who = caregiverAt(at, caretakerPref);          // father | mother | daycare
+                        html += `<td class="${CARE_COLOR[who]}"></td>`;
+                    }
+                    html += '</tr>';
+                }
+                return html + '</tbody></table>';
+            }
 
             // ----------------------  Utility Helpers  ----------------------
             function weekLabel(weekIdx) {
@@ -448,6 +508,8 @@
                     renderPre(todoMgrOutput(startDate, span, caretaker));
                 } else if (format === 'todo-tree') {
                     outputEl.innerHTML = todoTreeHTML(startDate, span, caretaker);
+                } else if (format === 'timeline') {
+                    outputEl.innerHTML = timelineHTML(startDate, span, caretaker);
                 } else { // ICS chosen
                     const icsText = icsOutput(startDate, span, caretaker);
                     showICS(icsText); // render calendar preview
