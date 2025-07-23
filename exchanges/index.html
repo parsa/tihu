@@ -137,14 +137,52 @@
         }
 
         /* --- timeline view ----------------------------------------------------- */
-        .timeline           { border-collapse: collapse; width: 100%; font-size: .8rem; }
-        .timeline th,
-        .timeline td        { border: 1px solid #ccc; padding: .15rem .3rem; text-align: center; }
-        .timeline thead th  { background: #f0f0f0; }
+        .timeline {
+            border-collapse: collapse;
+            width: 100%;
+            font-size: .8rem;
+        }
 
-        .tihu-father  { background:#1e90ff; color:#fff; }   /* DodgerBlue  */
-        .tihu-mother  { background:#ff8c00; color:#fff; }   /* DarkOrange  */
-        .tihu-daycare { background:#6c757d; color:#fff; }   /* Slate/Gray  */
+        .timeline th,
+        .timeline td {
+            border: 1px solid #ccc;
+            padding: .15rem .3rem;
+            text-align: center;
+        }
+
+        .timeline thead th {
+            background: #f0f0f0;
+        }
+
+        .tihu-father {
+            background: #1f77b4;
+            color: #fff;
+        }
+
+        /* Matplotlib tab:blue */
+        .tihu-mother {
+            background: #ff7f0e;
+            color: #fff;
+        }
+
+        /* Matplotlib tab:orange */
+        .tihu-daycare {
+            background: #2ca02c;
+            color: #fff;
+        }
+
+        /* Matplotlib tab:green */
+        /* put this after the other .timeline rules */
+        .timeline .now-marker {
+            position: absolute;
+            top: 0;
+            /* full-height bar */
+            bottom: 0;
+            width: 2px;
+            /* thin */
+            background: #d62728;
+            /* a pleasant reddish tone (≈ “tomato”) */
+        }
     </style>
 </head>
 
@@ -222,28 +260,28 @@
 
             // Timeline color map
             const CARE_COLOR = {
-                father:  "tihu-father",
-                mother:  "tihu-mother",
+                father: "tihu-father",
+                mother: "tihu-mother",
                 daycare: "tihu-daycare"
             };
             // Return "father" | "mother" | "daycare"
             function caregiverAt(dt, caretakerPref) {
-                const day      = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
+                const day = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
                 const parentAM = custodyParent(day);           // default 00-24h holder
-                const isWork   = WORKDAYS.has(day.getDay());
-                const exchT    = timeObjToDate(day, EXCH_TIME);
+                const isWork = WORKDAYS.has(day.getDay());
+                const exchT = timeObjToDate(day, EXCH_TIME);
 
                 // Exchange flips the parent at 17:30
                 const parentNow =
                     isExchangeDay(day) && dt >= exchT ? (parentAM === "father" ? "mother" : "father")
-                                                      : parentAM;
+                        : parentAM;
 
                 // Father working day, optional caretaker window 08:30-17:30 ( 17:20 on exchange-day )
                 if (parentNow === "father" && isWork && caretakerPref !== "dad") {
-                    const drop   = timeObjToDate(day, DROP_TIME);
-                    const pick   = isExchangeDay(day) && caretakerPref === "daycare"
-                                 ? new Date(timeObjToDate(day, EXCH_TIME) - 10*60*1000) // 17:20
-                                 : timeObjToDate(day, PICK_TIME);
+                    const drop = timeObjToDate(day, DROP_TIME);
+                    const pick = isExchangeDay(day) && caretakerPref === "daycare"
+                        ? new Date(timeObjToDate(day, EXCH_TIME) - 10 * 60 * 1000) // 17:20
+                        : timeObjToDate(day, PICK_TIME);
                     if (dt >= drop && dt < pick) {
                         return caretakerPref === "mom" ? "mother" : "daycare";
                     }
@@ -251,18 +289,30 @@
                 return parentNow;
             }
             function timelineHTML(start, span, caretakerPref) {
+                const now = new Date();
+                const todayMS = dateOnly(now).getTime();
                 let html = '<table class="timeline"><thead><tr><th>Date</th>';
-                for (let h = 0; h < 24; ++h) html += `<th>${h.toString().padStart(2,"0")}</th>`;
+                for (let h = 0; h < 24; ++h) html += `<th>${h.toString().padStart(2, "0")}</th>`;
                 html += '</tr></thead><tbody>';
 
                 for (let i = 0; i < span; ++i) {
                     const day = new Date(start); day.setDate(start.getDate() + i);
+                    const isToday = dateOnly(day).getTime() === todayMS;
                     html += `<tr><th>${decoratedDate(day)}</th>`;
 
                     for (let h = 0; h < 24; ++h) {
                         const at = new Date(day.getFullYear(), day.getMonth(), day.getDate(), h, 0, 0);
                         const who = caregiverAt(at, caretakerPref);          // father | mother | daycare
-                        html += `<td class="${CARE_COLOR[who]}"></td>`;
+                        const sameHour = h === now.getHours();
+                        const onBar = sameHour && (isToday || day > now);      // today or any later day
+                        if (onBar) {
+                            const pct = (now.getMinutes() / 60) * 100;            // % across this hour
+                            html += `<td class="${CARE_COLOR[who]}" style="position:relative">
+                                     <span class="now-marker" style="left:${pct}%"></span>
+                                   </td>`;
+                        } else {
+                            html += `<td class="${CARE_COLOR[who]}"></td>`;
+                        }
                     }
                     html += '</tr>';
                 }
