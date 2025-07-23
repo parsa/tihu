@@ -218,7 +218,7 @@
             // decide if the extra label is 'interesting'
             function decoratedDate(day) {
                 const tag = relDay(day);
-                const interesting = tag === 'Today' || tag === 'Tomorrow' || tag.startsWith('Next ');
+                const interesting = tag === 'Yesterday' || tag === 'Today' || tag === 'Tomorrow' || tag.startsWith('Next ');
                 return interesting ? `${fmtLongDate(day)} (${tag})` : fmtLongDate(day);
             }
             const pad = n => String(n).padStart(2, "0");
@@ -238,6 +238,7 @@
             }
             function relDay(day, today = dateOnly(new Date())) {
                 const diff = Math.round((dateOnly(day) - today) / 864e5);
+                if (diff === -1) return 'Yesterday';
                 if (diff === 0) return 'Today';
                 if (diff === 1) return 'Tomorrow';
                 if (diff >= 2 && diff <= 6) return day.toLocaleDateString('en-US', { weekday: 'long' });
