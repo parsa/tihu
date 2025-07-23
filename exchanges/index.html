@@ -181,7 +181,7 @@
             width: 2px;
             /* thin */
             background: #d62728;
-            /* a pleasant reddish tone (≈ “tomato”) */
+            /* a pleasant reddish tone (~ "tomato") */
         }
     </style>
 </head>
@@ -255,7 +255,7 @@
 
             // --- mkAct helper ---
             function mkAct(obj, required = true) {
-                return { notes:'', ...obj, actionRequired: required };
+                return { notes: '', ...obj, actionRequired: required };
             }
             const DROP_TIME = { h: 8, m: 30 };
             const PICK_TIME = { h: 17, m: 30 };
@@ -369,11 +369,32 @@
                 const deltaWeeks = Math.floor((monday - ANCHOR_MONDAY) / (7 * 864e5));
                 return deltaWeeks & 1; // 0 father-weekend, 1 mother-weekend
             }
+            /**
+             * Who has legal custody *before 17 : 30* on this date
+             * (exchange flips are handled separately).
+             *
+             * weekParity(day) === 0  ->  "Dad-weekend" block (Dad gets Fri-Sun)
+             * weekParity(day) === 1  ->  "Mom-weekend" block
+             *
+             * Pattern (repeats every two weeks):
+             *   Dad-weekend  :  Mom Mom Dad Mom Dad Dad Dad   (Mon-Sun)
+             *   Mom-weekend  :  Dad Dad Mom Mom Mom Mom Mom
+             */
             function custodyParent(day) {
-                const wd = day.getDay();
-                if (wd === 3 || wd === 4) return "father"; // Wed/Thu
-                if (wd === 1 || wd === 2) return "mother"; // Mon/Tue
-                return weekParity(day) === 0 ? "father" : "mother";
+                const p = weekParity(day);      // 0 = Dad-weekend, 1 = Mom-weekend
+                const wd = day.getDay();        // 0 Sun … 6 Sat
+
+                // Mon
+                if (wd === 1) return p === 0 ? "mother" : "father";
+                // Tue (always Mom until 17:30)
+                if (wd === 2) return "mother";
+                // Wed
+                if (wd === 3) return p === 0 ? "father" : "mother";
+                // Thu (always Mom until 17:30)
+                if (wd === 4) return "mother";
+                // Fri / Sat / Sun
+                if (wd === 5 || wd === 6 || wd === 0)
+                    return p === 0 ? "father" : "mother";
             }
             const isExchangeDay = d => EXCHANGE_WEEKDAYS.has(d.getDay());
 
@@ -419,7 +440,7 @@
                         date: day,
                         time: timeObjToDate(day, EXCH_TIME),
                     };
-                    // detect “already-with-Mom” passive hand-off
+                    // detect "already-with-Mom" passive hand-off
                     const passive =
                         parent === 'father' &&
                         working &&
@@ -437,7 +458,7 @@
                     acts.push(mkAct({
                         date: day,
                         time: timeObjToDate(day, { h: 0, m: 0 }),
-                        summary: '—',
+                        summary: '-',
                         location: '',
                         notes: `${custodyParent(day) === 'mother' ? 'Mom' : 'Dad'} all day (no action)`
                     }, false));
@@ -487,7 +508,7 @@
                         const ve = [];
                         if (!a.actionRequired) ve.push('TRANSP:TRANSPARENT');
                         if (a.location) ve.push(`LOCATION:${a.location}`);
-                        if (a.notes) ve.push(`DESCRIPTION:${a.notes.replace(/\n/g,'\\n')}`);
+                        if (a.notes) ve.push(`DESCRIPTION:${a.notes.replace(/\n/g, '\\n')}`);
                         cal.push("BEGIN:VEVENT", `DTSTAMP:${now}`, `UID:${uid}`, `DTSTART;TZID=${tzid}:${dtstart}`, "DURATION:PT15M", `SUMMARY:${a.summary}`, ve.join('\r\n'), "END:VEVENT");
                     }
                 }
