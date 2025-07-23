@@ -370,20 +370,20 @@
                 return deltaWeeks & 1; // 0 father-weekend, 1 mother-weekend
             }
             /**
-             * Who has legal custody *before 17 : 30* on this date
+            * Who has legal custody *before 17:30* on this date
             * Schedule is the classic 2-2-3 that flips every week:
             *
-            *   ┌ Dad-weekend week (weekParity == 0) ┐
+            *   + Dad-weekend week (weekParity == 0) +
             *   Mon Tue Wed Thu Fri Sat Sun
             *   Dad Dad Mom Mom Dad Dad Dad
             *
-            *   ┌ Mom-weekend week (weekParity == 1) ┐
+            *   + Mom-weekend week (weekParity == 1) +
             *   Mon Tue Wed Thu Fri Sat Sun
             *   Mom Mom Dad Dad Mom Mom Mom
              */
             function custodyParent(day) {
                 const p = weekParity(day);          // 0 = Dad-weekend, 1 = Mom-weekend
-                const wd = day.getDay();             // 0 Sun … 6 Sat
+                const wd = day.getDay();             // 0 Sun ... 6 Sat
                 const dadWeek = p === 0;
 
                 // Mon-Tue
@@ -437,18 +437,30 @@
                         date: day,
                         time: timeObjToDate(day, EXCH_TIME),
                     };
-                    // detect "already-with-Mom" passive hand-off
-                    const passive =
-                        parent === 'father' &&
-                        working &&
-                        caretakerPref === 'mom';
 
-                    acts.push(mkAct(
-                        passive
-                            ? { ...base, summary: 'Custody flips to Mom (no action)', location: '' }
-                            : { ...base, summary: parent === 'mother' ? 'Pick up Tihu / Exchange' : 'Exchange custody', location: LIBRARY_LOC },
-                        !passive
-                    ));
+                    const newCustodian = parent === 'mother' ? 'father' : 'mother';          // who has Tihu *after* 17:30
+                    const direction = `${parent === 'mother' ? 'Mom' : 'Dad'} -> ${newCustodian === 'mother' ? 'Mom' : 'Dad'}`;
+
+                    // "passive" when Dad was working, Mom already had Tihu all afternoon.
+                    const passive = parent === 'father' && working && caretakerPref === 'mom';
+
+                    if (passive) {
+                        acts.push(mkAct({
+                            ...base,
+                            summary: '-',                               // Action column
+                            location: '',
+                            notes: `Exchange: ${direction}`   // Notes column
+                        }, /*required*/ false));
+                    } else {
+                        acts.push(mkAct({
+                            ...base,
+                            summary: parent === 'mother'
+                                ? 'Pick up Tihu'                 // Dad picks up from Mom
+                                : 'Drop off Tihu',               // Dad drops off to Mom
+                            location: LIBRARY_LOC,
+                            notes: `Exchange: ${direction}`
+                        }));
+                    }
                 }
                 // insert passive full-day row if none
                 if (!acts.length) {
@@ -457,7 +469,7 @@
                         time: timeObjToDate(day, { h: 0, m: 0 }),
                         summary: '-',
                         location: '',
-                        notes: `${custodyParent(day) === 'mother' ? 'Mom' : 'Dad'} all day (no action)`
+                        notes: `${custodyParent(day) === 'mother' ? 'Mom' : 'Dad'} all day`
                     }, false));
                 }
                 return acts;
