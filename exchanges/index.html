@@ -600,12 +600,17 @@
                 // 2) convert to FullCalendar event objects
                 const events = vevs.map(v => {
                     const e = new ICAL.Event(v);
+                    const desc = v.getFirstPropertyValue('description') || '';
+                    const loc = v.getFirstPropertyValue('location') || '';
+                    const title = (e.summary === '-' && desc) ? desc : e.summary;
+
                     return {
-                        title: e.summary,
+                        title,
                         start: e.startDate.toJSDate(),
                         end: e.endDate ? e.endDate.toJSDate() : null,
                         allDay: false,
-                        location: e.location
+                        extendedProps: { notes: desc, location: loc },
+                        location: loc
                     };
                 });
 
