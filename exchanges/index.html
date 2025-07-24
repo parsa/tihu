@@ -655,7 +655,10 @@
             }
             form.addEventListener("input", generate);
             form.addEventListener("change", generate);
-            document.getElementById("start").value = (new Date()).toISOString().slice(0, 10);
+            // Set start date input to local date (not UTC)
+            const d = new Date();
+            document.getElementById("start").value =
+                `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
             generate();
         })();
     </script>
