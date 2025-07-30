@@ -203,20 +203,20 @@
         <label>
             Caretaker on work-days:
             <span id="careGroup" class="caretaker">
+                <button type="button" data-care="daycare" class="active">Daycare</button>
                 <button type="button" data-care="father">Father</button>
-                <button type="button" data-care="mother" class="active">Mother</button>
-                <button type="button" data-care="daycare">Daycare</button>
+                <button type="button" data-care="mother">Mother</button>
             </span>
         </label>
 
         <!-- format selector removed; replaced by tabs -->
     </form>
     <div id="tabs" class="tabs">
-        <button data-fmt="agenda" class="active">Agenda</button>
+        <button data-fmt="timeline" class="active">Timeline</button>
+        <button data-fmt="agenda">Agenda</button>
         <button data-fmt="todo-mgr">Todo Manager</button>
         <button data-fmt="todo-tree">Todo Tree</button>
         <button data-fmt="ics">Calendar (ICS)</button>
-        <button data-fmt="timeline">Timeline</button>
     </div>
 
     <div id="output"></div>
@@ -225,9 +225,9 @@
     <script>
         (() => {
             // Tab UI state
-            let currentFmt = "agenda"; // default format
+            let currentFmt = "timeline"; // default format
             // Caretaker UI state
-            let currentCaretaker = "mother"; // default matches the active button
+            let currentCaretaker = "daycare"; // default matches the active button
             // Wire tab buttons
             document.addEventListener('DOMContentLoaded', () => {
                 const tabsEl = document.getElementById('tabs');
