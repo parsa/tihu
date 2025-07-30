@@ -75,11 +75,11 @@
         }
 
         .agenda .day-alt-1 {
-            background: #f9f9f9;
+            background: #e0e0e0;
         }
 
         .agenda th {
-            background: #f0f0f0;
+            background: #d0d0d0;
         }
 
         pre.todo {
@@ -299,10 +299,13 @@
                 for (let h = 0; h < 24; ++h) html += `<th>${h.toString().padStart(2, "0")}</th>`;
                 html += '</tr></thead><tbody>';
 
+                const fmtMonthAbbr = d => d.toLocaleString('en-US', { month: 'short' });
+                const fmtTimelineDate = d => `${fmtWeekday(d)}, ${fmtMonthAbbr(d)} ${d.getDate()}, ${d.getFullYear()}`;
+
                 for (let i = 0; i < span; ++i) {
                     const day = new Date(start); day.setDate(start.getDate() + i);
                     const isToday = dateOnly(day).getTime() === todayMS;
-                    html += `<tr><th>${decoratedDate(day)}</th>`;
+                    html += `<tr><th>${fmtTimelineDate(day)}</th>`;
 
                     for (let h = 0; h < 24; ++h) {
                         const at = new Date(day.getFullYear(), day.getMonth(), day.getDate(), h, 0, 0);
@@ -504,7 +507,17 @@
                 }
                 return html + '</tbody></table>';
             }
-            function formatDateICS(d) { return d.toISOString().replace(/[-:]/g, "").split(".")[0]; }
+            // Format date/time in local timezone as YYYYMMDDTHHMMSS for ICS
+            const pad2 = n => String(n).padStart(2, '0');
+            function formatDateICS(d) {
+                return d.getFullYear()
+                    + pad2(d.getMonth() + 1)
+                    + pad2(d.getDate())
+                    + 'T'
+                    + pad2(d.getHours())
+                    + pad2(d.getMinutes())
+                    + pad2(d.getSeconds());
+            }
             function icsOutput(start, span, caretaker) {
                 const tzid = "America/Los_Angeles";
                 const now = formatDateICS(new Date()) + "Z";
