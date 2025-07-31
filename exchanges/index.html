@@ -531,7 +531,18 @@
                         if (!a.actionRequired) ve.push('TRANSP:TRANSPARENT');
                         if (a.location) ve.push(`LOCATION:${a.location}`);
                         if (a.notes) ve.push(`DESCRIPTION:${a.notes.replace(/\n/g, '\\n')}`);
-                        cal.push("BEGIN:VEVENT", `DTSTAMP:${now}`, `UID:${uid}`, `DTSTART;TZID=${tzid}:${dtstart}`, "DURATION:PT15M", `SUMMARY:${a.summary}`, ve.join('\r\n'), "END:VEVENT");
+                        // Use notes as summary if placeholder '-'
+                        const summary = (a.summary === '-' && a.notes) ? a.notes : a.summary;
+                        cal.push(
+                            "BEGIN:VEVENT",
+                            `DTSTAMP:${now}`,
+                            `UID:${uid}`,
+                            `DTSTART;TZID=${tzid}:${dtstart}`,
+                            "DURATION:PT15M",
+                            `SUMMARY:${summary}`,
+                            ve.join('\r\n'),
+                            "END:VEVENT"
+                        );
                     }
                 }
                 cal.push("END:VCALENDAR");
